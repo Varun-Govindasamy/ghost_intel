@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="ghostGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5b6cf1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4549e5;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <path fill="url(#ghostGrad)" d="M50 10 C25 10 15 30 15 50 C15 70 15 90 15 90 L25 80 L35 90 L50 75 L65 90 L75 80 L85 90 C85 90 85 70 85 50 C85 30 75 10 50 10 Z"/>
+  <circle cx="35" cy="45" r="8" fill="white"/>
+  <circle cx="65" cy="45" r="8" fill="white"/>
+  <circle cx="37" cy="45" r="4" fill="#1e1e4b"/>
+  <circle cx="67" cy="45" r="4" fill="#1e1e4b"/>
+</svg>
