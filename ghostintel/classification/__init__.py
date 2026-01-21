@@ -209,6 +209,7 @@ class SICClassifier:
     ) -> CompanyIntelligence:
         """
         Classify a company using SIC codes based on extracted intelligence.
+        Only applies if LLM hasn't already provided classification.
         
         Args:
             intelligence: Extracted company intelligence
@@ -216,6 +217,11 @@ class SICClassifier:
         Returns:
             CompanyIntelligence with SIC classification added
         """
+        # Skip classification if LLM already provided SIC code
+        if intelligence.sic_code and intelligence.sector and intelligence.industry:
+            print(f"📊 Using LLM classification: SIC {intelligence.sic_code} - {intelligence.sector}/{intelligence.industry}")
+            return intelligence
+        
         # Combine all text for analysis
         text_parts = []
         
