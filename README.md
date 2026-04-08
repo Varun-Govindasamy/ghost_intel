@@ -11,19 +11,19 @@ GhostIntel is an autonomous company intelligence system that converts a company 
 ## ✨ Features
 
 - **🕷️ Intelligent Crawling** - Automatically crawls and discovers all accessible pages using Crawl4AI
-- **📊 Deterministic Extraction** - Rule-based entity extraction with confidence scores
+- **🤖 Groq LLM Extraction** - Powered by Groq for fast, intelligent entity extraction and classification
 - **🏭 SIC Classification** - Industry classification using standardized SIC taxonomy
 - **🔗 Knowledge Graph** - Builds relationships between companies, industries, and technologies
 - **📈 Batch Processing** - Analyze up to 150 companies at once
 - **🎨 Beautiful UI** - Modern React interface with Tailwind CSS
-- **✅ Zero Hallucination** - No mandatory LLM dependency, fully auditable outputs
+- **⚡ Lightning Fast** - Groq's ultra-fast inference for rapid company analysis
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Crawl Layer   │ → │  Extraction     │ → │  Classification │
-│   (Crawl4AI)    │    │  Engine         │    │  (SIC Codes)    │
+│   Crawl Layer   │ → │  Groq LLM       │ → │  Classification │
+│   (Crawl4AI)    │    │  Extraction     │    │  (SIC Codes)    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                                        │
                                                        ▼
@@ -100,9 +100,10 @@ ghostintel/
 │   ├── main.py              # Entry point
 │   ├── api/                  # FastAPI routes
 │   ├── crawler/              # Crawl4AI integration
-│   ├── extraction/           # Rule-based extraction
+│   ├── extraction/           # Entity extraction
 │   ├── classification/       # SIC classification
 │   ├── graph/                # Knowledge graph
+│   ├── llm/                  # Groq LLM integration
 │   ├── models/               # Pydantic schemas
 │   └── data/
 │       └── sic_taxonomy.json # SIC codes reference
@@ -123,6 +124,7 @@ ghostintel/
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `GROQ_API_KEY` | - | Your Groq API key (required) |
 | `HOST` | `0.0.0.0` | API host |
 | `PORT` | `8000` | API port |
 
@@ -164,12 +166,11 @@ ghostintel/
 
 ## 🎯 Key Principles
 
-1. **Strict separation** between data acquisition and intelligence
-2. **Deterministic outputs** - same input always produces same output
-3. **Evidence-based** - every extraction includes confidence and source
-4. **SIC-based classification** - standardized, auditable industry coding
-5. **Graph-native** - relationships modeled as knowledge graph
-6. **No hallucination** - no mandatory LLM dependency
+1. **Groq-powered extraction** - Lightning-fast LLM inference for intelligent data extraction
+2. **Evidence-based** - Every extraction includes confidence and source
+3. **SIC-based classification** - Standardized, auditable industry coding
+4. **Graph-native** - Relationships modeled as knowledge graph
+5. **Scalable** - Batch process hundreds of companies efficiently
 
 ## 📈 Batch Processing
 
