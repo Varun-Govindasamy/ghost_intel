@@ -1,12 +1,12 @@
 """
-GhostIntel LLM Module - Groq-powered intelligent extraction
+GhostIntel LLM Module - OpenAI-powered intelligent extraction
 """
 
 import os
 import json
 import re
 from typing import Optional
-from groq import Groq
+from openai import OpenAI
 
 from ..models.schemas import (
     CompanyIntelligence,
@@ -20,12 +20,12 @@ from ..models.schemas import (
 )
 
 
-class GroqExtractor:
+class OpenAIExtractor:
     """
-    Uses Groq LLM to intelligently extract and classify company data
+    Uses OpenAI LLM to intelligently extract and classify company data
     from crawled web pages.
     """
-    
+
     EXTRACTION_PROMPT = """You are an expert company data extraction AI. Analyze the following crawled web content and extract structured company information.
 
 CRAWLED CONTENT FROM {domain}:
@@ -99,24 +99,23 @@ OTHER RULES:
 8. Return ONLY valid JSON, no additional text"""
 
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize with Groq API key"""
-        self.api_key = api_key or os.environ.get("GROQ_API_KEY")
+        """Initialize with OpenAI API key"""
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         if self.api_key:
-            self.client = Groq(api_key=self.api_key)
-            # Use llama-3.3-70b-versatile - fast and powerful
-            self.model = "llama-3.3-70b-versatile"
+            self.client = OpenAI(api_key=self.api_key)
+            self.model = "gpt-4o-mini"
         else:
             self.client = None
             self.model = None
-    
+
     def is_available(self) -> bool:
-        """Check if Groq is configured and available"""
+        """Check if OpenAI is configured and available"""
         return self.client is not None
-    
+
     def _prepare_content(self, snapshot: DomainSnapshot, max_chars: int = 25000) -> str:
         """Prepare crawled content for LLM processing"""
         content_parts = []
-        
+
         for page in snapshot.pages:
             part = f"\n--- PAGE: {page.url} ---\n"
             if page.title:
@@ -125,61 +124,58 @@ OTHER RULES:
                 part += f"Meta Description: {page.meta_description}\n"
             if page.meta_keywords:
                 part += f"Keywords: {', '.join(page.meta_keywords)}\n"
-            
+
             # Add structured data
             if page.structured_data:
                 part += f"Structured Data: {json.dumps(page.structured_data, indent=2)[:2000]}\n"
-            
+
             # Add text content
             if page.text_content:
-                # Clean and truncate text
                 text = re.sub(r'\s+', ' ', page.text_content).strip()
                 part += f"Content: {text[:5000]}\n"
-            
+
             content_parts.append(part)
-        
-        # Combine and truncate to max chars
+
         full_content = "\n".join(content_parts)
         if len(full_content) > max_chars:
             full_content = full_content[:max_chars] + "\n... [truncated]"
-        
+
         return full_content
-    
+
     def _parse_response(self, response_text: str) -> dict:
-        """Parse Groq response to extract JSON"""
+        """Parse OpenAI response to extract JSON"""
         try:
-            # Try to find JSON in the response
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
                 return json.loads(json_match.group())
         except json.JSONDecodeError:
             pass
-        
+
         return {}
-    
+
     async def extract(self, snapshot: DomainSnapshot) -> dict:
         """
-        Extract company intelligence using Groq LLM.
-        
+        Extract company intelligence using OpenAI LLM.
+
         Args:
             snapshot: Crawled domain snapshot
-            
+
         Returns:
             Dictionary with extracted fields
         """
         return self.extract_sync(snapshot)
-    
+
     def extract_sync(self, snapshot: DomainSnapshot) -> dict:
         """Synchronous version of extract"""
         if not self.is_available():
             return {}
-        
+
         content = self._prepare_content(snapshot)
         prompt = self.EXTRACTION_PROMPT.format(
             domain=snapshot.domain,
             content=content
         )
-        
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -196,17 +192,18 @@ OTHER RULES:
                 temperature=0.1,
                 max_tokens=4096,
             )
-            
+
             if response and response.choices:
                 return self._parse_response(response.choices[0].message.content)
         except Exception as e:
-            print(f"Groq extraction error: {e}")
-        
+            print(f"OpenAI extraction error: {e}")
+
         return {}
 
 
-# Alias for backward compatibility
-GeminiExtractor = GroqExtractor
+# Aliases for backward compatibility
+GroqExtractor = OpenAIExtractor
+GeminiExtractor = OpenAIExtractor
 
 
 def merge_extracted_data(
@@ -219,17 +216,17 @@ def merge_extracted_data(
     """
     if not llm_data:
         return base_intelligence
-    
+
     # Update basic fields if not already set or LLM provides better data
     if llm_data.get("company_name") and not base_intelligence.company_name:
         base_intelligence.company_name = llm_data["company_name"]
-    
+
     if llm_data.get("long_description"):
         base_intelligence.long_description = llm_data["long_description"]
-    
+
     if llm_data.get("short_description"):
         base_intelligence.short_description = llm_data["short_description"]
-    
+
     # Industry classification
     if llm_data.get("sic_code"):
         base_intelligence.sic_code = llm_data["sic_code"]
@@ -241,7 +238,7 @@ def merge_extracted_data(
         base_intelligence.industry = llm_data["industry"]
     if llm_data.get("sector"):
         base_intelligence.sector = llm_data["sector"]
-    
+
     # Contact info
     if llm_data.get("full_address"):
         base_intelligence.full_address = llm_data["full_address"]
@@ -255,7 +252,7 @@ def merge_extracted_data(
         base_intelligence.hq_indicator = llm_data["hq_indicator"]
     if llm_data.get("logo_url"):
         base_intelligence.logo_url = llm_data["logo_url"]
-    
+
     # Social media
     social = SocialMediaLinks(
         linkedin=llm_data.get("linkedin") or base_intelligence.social_links.get("linkedin"),
@@ -266,7 +263,7 @@ def merge_extracted_data(
         blog=llm_data.get("blog") or base_intelligence.social_links.get("blog"),
     )
     base_intelligence.social_media = social
-    
+
     # Update social_links dict for backward compatibility
     if social.linkedin:
         base_intelligence.social_links["linkedin"] = social.linkedin
@@ -280,7 +277,7 @@ def merge_extracted_data(
         base_intelligence.social_links["youtube"] = social.youtube
     if social.blog:
         base_intelligence.social_links["blog"] = social.blog
-    
+
     # People
     if llm_data.get("people"):
         people_list = []
@@ -293,32 +290,29 @@ def merge_extracted_data(
                 ))
         if people_list:
             base_intelligence.people = people_list
-    
+
     # Certifications
     if llm_data.get("certifications"):
         certs = llm_data["certifications"]
         if isinstance(certs, list):
             base_intelligence.certifications = [c for c in certs if c]
-    
+
     # Tags
     if llm_data.get("tags"):
         tags = llm_data["tags"]
         if isinstance(tags, list):
-            # Merge with existing tags
             existing = set(base_intelligence.tags)
             for tag in tags:
                 if tag and tag not in existing:
                     base_intelligence.tags.append(tag)
-    
+
     # Products - REPLACE rule-based products with LLM products (more accurate)
     if llm_data.get("products"):
         products = llm_data["products"]
         if isinstance(products, list):
-            # Clear existing products and use LLM results
             base_intelligence.products = []
             for prod in products:
                 if prod and isinstance(prod, str) and len(prod) > 1:
-                    # Filter out obvious navigation/menu items
                     lower_prod = prod.lower().strip()
                     skip_words = [
                         'home', 'about', 'contact', 'blog', 'news', 'careers', 'company',
@@ -335,7 +329,7 @@ def merge_extracted_data(
                             description=None,
                             confidence=0.85
                         ))
-    
+
     # Technologies
     if llm_data.get("technologies"):
         techs = llm_data["technologies"]
@@ -347,9 +341,9 @@ def merge_extracted_data(
                         category="technology",
                         confidence=0.7
                     ))
-    
+
     # Boost confidence since we used LLM
     base_intelligence.overall_confidence = min(base_intelligence.overall_confidence + 0.2, 1.0)
-    base_intelligence.analysis_version = "1.1.0-groq"
-    
+    base_intelligence.analysis_version = "1.1.0-openai"
+
     return base_intelligence
