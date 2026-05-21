@@ -139,6 +139,9 @@ class CompanyIntelligence(BaseModel):
     # Company signals
     employee_count_estimate: Optional[str] = None
     founding_year: Optional[int] = None
+    funding_stage: Optional[str] = Field(None, description="Funding stage e.g. Seed, Series A, Series B, Public, Bootstrapped")
+    pricing_model: Optional[str] = Field(None, description="Business/pricing model e.g. SaaS, Freemium, One-time, Enterprise, Open Source")
+    job_openings_count: Optional[int] = Field(None, description="Number of open job positions found")
     is_hiring: bool = False
     has_careers_page: bool = False
     

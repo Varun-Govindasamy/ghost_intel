@@ -417,27 +417,147 @@ class ExtractionEngine:
         
         return locations[:10]
     
-    def _detect_hiring_signals(self, pages: list[CrawlResult]) -> tuple[bool, bool]:
-        """Detect if company is hiring and has careers page"""
-        is_hiring = False
-        has_careers = False
+    def _extract_founding_year(self, pages: list[CrawlResult]) -> Optional[int]:
+        """Extract company founding year from page content"""
+        FOUNDING_PATTERNS = [
+            r'(?:founded|established|incorporated|started|since)\s+(?:in\s+)?((?:19|20)\d{2})\b',
+            r'\bsince\s+((?:19|20)\d{2})\b',
+            r'\(c\)\s*((?:19|20)\d{2})\b',
+            r'copyright\s+(?:©)?\s*((?:19|20)\d{2})\b',
+            r'\©\s*((?:19|20)\d{2})\b',
+        ]
+        
+        candidates = {}
+        for page in pages:
+            content = page.text_content
+            # Give more weight to structured data
+            for data in page.structured_data.values():
+                if isinstance(data, dict):
+                    founded = data.get("foundingDate") or data.get("founded")
+                    if founded:
+                        year_match = re.search(r'((?:19|20)\d{2})', str(founded))
+                        if year_match:
+                            year = int(year_match.group(1))
+                            if 1800 <= year <= 2025:
+                                candidates[year] = candidates.get(year, 0) + 2
+            
+            for pattern in FOUNDING_PATTERNS:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                for m in matches:
+                    year = int(m)
+                    if 1800 <= year <= 2025:
+                        candidates[year] = candidates.get(year, 0) + 1
+        
+        if not candidates:
+            return None
+        return max(candidates, key=candidates.get)
+
+    def _extract_employee_count(self, pages: list[CrawlResult]) -> Optional[str]:
+        """Extract employee count estimate from page content"""
+        EMPLOYEE_PATTERNS = [
+            (r'(\d{1,3}(?:,\d{3})*)\+?\s*employees?', 1.0),
+            (r'team\s+of\s+(\d+)\+?\s*(?:people|professionals|experts|members)?', 0.9),
+            (r'(\d{1,3}(?:,\d{3})*)\+?\s*(?:people|professionals|staff|members|team members)', 0.8),
+            (r'over\s+(\d{1,3}(?:,\d{3})*)\s*(?:employees?|people|staff)', 0.8),
+            (r'more\s+than\s+(\d{1,3}(?:,\d{3})*)\s*(?:employees?|people|staff)', 0.8),
+        ]
+        SIZE_RANGES = [
+            (r'\b1-10\b|\bsolo founder\b|\bsolopreneur\b', '1-10'),
+            (r'\b11-50\b|\bsmall\s+team\b|\bstarting\s+up\b', '11-50'),
+            (r'\b51-200\b|\bgrowing\s+team\b', '51-200'),
+            (r'\b201-500\b', '201-500'),
+            (r'\b501-1000\b', '501-1,000'),
+            (r'\b1001-5000\b|\bmid.?size\b', '1,001-5,000'),
+            (r'\b5001-10000\b|\blarge\s+enterprise\b', '5,001-10,000'),
+            (r'\bfortune\s+500\b|\bglobal\s+enterprise\b', '10,000+'),
+        ]
+        
+        best_count = None
+        best_confidence = 0.0
         
         for page in pages:
-            # Check for careers page
-            if re.search(r'/careers?|/jobs?|/work-with-us', page.url, re.IGNORECASE):
-                has_careers = True
+            # Check structured data first
+            for data in page.structured_data.values():
+                if isinstance(data, dict):
+                    emp = data.get("numberOfEmployees")
+                    if emp:
+                        return str(emp)
             
-            # Check content for hiring signals
-            content = page.text_content.lower()
-            for pattern in self.HIRING_PATTERNS:
-                if re.search(pattern, content, re.IGNORECASE):
-                    is_hiring = True
-                    break
+            content = page.text_content
+            for pattern, confidence in EMPLOYEE_PATTERNS:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match and confidence > best_confidence:
+                    num_str = match.group(1).replace(',', '')
+                    num = int(num_str)
+                    # Normalize to ranges
+                    if num < 11: best_count = '1-10'
+                    elif num < 51: best_count = '11-50'
+                    elif num < 201: best_count = '51-200'
+                    elif num < 501: best_count = '201-500'
+                    elif num < 1001: best_count = '501-1,000'
+                    elif num < 5001: best_count = '1,001-5,000'
+                    elif num < 10001: best_count = '5,001-10,000'
+                    else: best_count = '10,000+'
+                    best_confidence = confidence
             
-            if is_hiring and has_careers:
-                break
+            # Check range keywords as fallback
+            if not best_count:
+                for pattern, label in SIZE_RANGES:
+                    if re.search(pattern, content, re.IGNORECASE):
+                        best_count = label
+                        break
         
-        return is_hiring, has_careers
+        return best_count
+
+    def _extract_funding_stage(self, pages: list[CrawlResult]) -> Optional[str]:
+        """Extract funding stage from page content"""
+        FUNDING_PATTERNS = [
+            (r'\bseries\s+d\b', 'Series D'),
+            (r'\bseries\s+c\b', 'Series C'),
+            (r'\bseries\s+b\b', 'Series B'),
+            (r'\bseries\s+a\b', 'Series A'),
+            (r'\bseed\s+(?:round|funding|stage)\b|\bseed-funded\b|\bseed\s+funded\b', 'Seed'),
+            (r'\bpre-?seed\b', 'Pre-Seed'),
+            (r'\binitial\s+public\s+offering\b|\bipo\b|\bnasdaq\b|\bnyse\b|\bpublicly\s+traded\b|\bstock\s+ticker\b', 'Public'),
+            (r'\bacquired\s+by\b|\bsubsidiary\s+of\b', 'Acquired'),
+            (r'\bbootstrapped\b|\bself-funded\b|\bprofitable\s+and\s+independent\b', 'Bootstrapped'),
+            (r'\bgrowth\s+equity\b|\bprivate\s+equity\b', 'Private Equity'),
+            (r'\bventure-backed\b|\bvc-backed\b|\bvc\s+funded\b', 'Venture-Backed'),
+        ]
+        
+        for page in pages:
+            content = page.text_content
+            for pattern, stage in FUNDING_PATTERNS:
+                if re.search(pattern, content, re.IGNORECASE):
+                    return stage
+        return None
+
+    def _extract_pricing_model(self, pages: list[CrawlResult]) -> Optional[str]:
+        """Extract pricing/business model from page content"""
+        PRICING_PATTERNS = [
+            (r'\bfreemium\b|\bfree\s+plan\b|\bfree\s+tier\b|\bfree\s+forever\b', 'Freemium'),
+            (r'\bopen.?source\b', 'Open Source'),
+            (r'\bper\s+(?:user|seat|month|year)\b|\bmonthly\s+subscription\b|\bannual\s+subscription\b|\bsubscription.based\b', 'Subscription'),
+            (r'\bone.time\s+(?:payment|purchase|fee)\b|\bbuy\s+(?:once|now)\b|\bperpetual\s+license\b', 'One-time Purchase'),
+            (r'\benterprise\s+pricing\b|\bcontact\s+(?:us\s+)?for\s+pricing\b|\bcustom\s+pricing\b|\btalk\s+to\s+sales\b', 'Enterprise'),
+            (r'\bpay.as.you.go\b|\busage.based\b|\bconsumption.based\b', 'Usage-based'),
+            (r'\bcommission\b|\bmarketplace\b|\btransaction\s+fee\b', 'Marketplace/Commission'),
+        ]
+        
+        # Pricing page gets higher priority
+        priority_pages = sorted(
+            pages,
+            key=lambda p: 1 if re.search(r'/pricing', p.url, re.IGNORECASE) else 0,
+            reverse=True
+        )
+        
+        for page in priority_pages:
+            content = page.text_content
+            for pattern, model in PRICING_PATTERNS:
+                if re.search(pattern, content, re.IGNORECASE):
+                    return model
+        return None
+
     
     def _extract_tags(self, pages: list[CrawlResult]) -> list[str]:
         """Extract keyword tags from pages"""
@@ -514,16 +634,22 @@ class ExtractionEngine:
         technologies = self._extract_technologies(pages)
         products = self._extract_products(pages)
         locations = self._extract_locations(pages)
-        is_hiring, has_careers = self._detect_hiring_signals(pages)
+        is_hiring, has_careers, job_count = self._detect_hiring_signals(pages)
         tags = self._extract_tags(pages)
-        
+
+        # New intelligence signals
+        founding_year = self._extract_founding_year(pages)
+        employee_count = self._extract_employee_count(pages)
+        funding_stage = self._extract_funding_stage(pages)
+        pricing_model = self._extract_pricing_model(pages)
+
         # Calculate overall confidence
         confidence_values = [
             name_confidence.value,
             desc_confidence.value,
         ]
         overall_confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
-        
+
         # Build base intelligence
         intelligence = CompanyIntelligence(
             domain=snapshot.domain,
@@ -546,25 +672,30 @@ class ExtractionEngine:
             products=products,
             locations=locations,
             tags=tags,
+            founding_year=founding_year,
+            employee_count_estimate=employee_count,
+            funding_stage=funding_stage,
+            pricing_model=pricing_model,
+            job_openings_count=job_count if job_count > 0 else None,
             is_hiring=is_hiring,
             has_careers_page=has_careers,
             overall_confidence=overall_confidence,
             pages_analyzed=len(pages),
             crawl_timestamp=snapshot.crawl_start
         )
-        
-        # Enhance with Groq LLM if available and requested
+
+        # Enhance with OpenAI LLM if available and requested
         if use_llm and GROQ_AVAILABLE:
             try:
-                groq = GroqExtractor()
-                if groq.is_available():
-                    llm_data = groq.extract_sync(snapshot)
+                openai_extractor = GroqExtractor()  # alias for OpenAIExtractor
+                if openai_extractor.is_available():
+                    llm_data = openai_extractor.extract_sync(snapshot)
                     if llm_data:
                         intelligence = merge_extracted_data(intelligence, llm_data)
-                        print(f"✨ Enhanced extraction with gemma3:4b for {snapshot.domain}")
+                        print(f"✨ Enhanced extraction with OpenAI for {snapshot.domain}")
             except Exception as e:
                 print(f"LLM enhancement failed (falling back to rule-based): {e}")
-        
+
         return intelligence
 
 

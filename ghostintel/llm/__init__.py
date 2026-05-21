@@ -61,8 +61,20 @@ Required output format (JSON):
     ],
     "certifications": ["Certification 1", "Certification 2"],
     "products": ["Actual Product Name 1", "Actual Service Name 2"],
-    "technologies": ["Technology 1", "Technology 2"]
+    "technologies": ["Technology 1", "Technology 2"],
+    "founding_year": 2015,
+    "employee_count": "51-200",
+    "funding_stage": "Series B",
+    "pricing_model": "Subscription",
+    "job_openings_count": 12
 }}
+
+FIELD RULES FOR NEW FIELDS:
+- founding_year: Integer year only (e.g. 2010). Look for "founded in", "since YYYY", "established YYYY", copyright year. Use null if not found.
+- employee_count: Use ranges ONLY: "1-10", "11-50", "51-200", "201-500", "501-1,000", "1,001-5,000", "5,001-10,000", "10,000+". Use null if not found.
+- funding_stage: One of: "Pre-Seed", "Seed", "Series A", "Series B", "Series C", "Series D", "Venture-Backed", "Bootstrapped", "Private Equity", "Public", "Acquired". Use null if not found.
+- pricing_model: One of: "Freemium", "Subscription", "One-time Purchase", "Enterprise", "Usage-based", "Marketplace/Commission", "Open Source". Use null if not found.
+- job_openings_count: Integer count of open positions mentioned. Use null if not found.
 
 CRITICAL RULES FOR PRODUCTS/SERVICES:
 - ONLY include ACTUAL named products or services the company SELLS or OFFERS to customers
@@ -341,6 +353,28 @@ def merge_extracted_data(
                         category="technology",
                         confidence=0.7
                     ))
+
+    # New intelligence signals from LLM
+    if llm_data.get("founding_year") and not base_intelligence.founding_year:
+        try:
+            base_intelligence.founding_year = int(llm_data["founding_year"])
+        except (ValueError, TypeError):
+            pass
+
+    if llm_data.get("employee_count") and not base_intelligence.employee_count_estimate:
+        base_intelligence.employee_count_estimate = str(llm_data["employee_count"])
+
+    if llm_data.get("funding_stage") and not base_intelligence.funding_stage:
+        base_intelligence.funding_stage = llm_data["funding_stage"]
+
+    if llm_data.get("pricing_model") and not base_intelligence.pricing_model:
+        base_intelligence.pricing_model = llm_data["pricing_model"]
+
+    if llm_data.get("job_openings_count") and not base_intelligence.job_openings_count:
+        try:
+            base_intelligence.job_openings_count = int(llm_data["job_openings_count"])
+        except (ValueError, TypeError):
+            pass
 
     # Boost confidence since we used LLM
     base_intelligence.overall_confidence = min(base_intelligence.overall_confidence + 0.2, 1.0)
